@@ -570,7 +570,7 @@
             }
 
             const content = await zip.generateAsync({type:"blob"});
-            saveAs(content, `AvatarForge__${n1}__${currentMode}.zip`);
+            saveAs(content, `PoseExplorer__${n1}__${currentMode}.zip`);
             
             // Remise à zéro
             btn.innerHTML = `<i data-lucide="folder-archive" class="w-7 h-7"></i> GÉNÉRER ZIP`;
