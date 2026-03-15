@@ -468,9 +468,10 @@
                 return matchSearch && matchCategory;
             });
 
-            // ÉTAPE 1 : Préparer la liste de toutes les tâches à effectuer (sans les lancer)
+            // ÉTAPE 1 : Préparer les tâches ET les métadonnées
             const tasks = [];
             const nameCount = {};
+            const metadataExport = []; // NOUVEAU : Tableau pour stocker les infos du JSON
             let f1, f2;
             
             if(currentMode === 'solo') { f1 = zip.folder(n1); f2 = zip.folder(n2); }
@@ -480,28 +481,45 @@
                 nameCount[tag] = (nameCount[tag] || 0) + 1;
                 const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
                 
+                // Préparation des données brutes pour le JSON
+                const imgData = {
+                    titre: t.displayTag,
+                    mots_cles: t.keywords,
+                    categories: t.categories || []
+                };
+                
                 if (currentMode === 'solo') {
+                    const filename1 = `${n1}__${tag}${suf}.png`;
                     tasks.push({
                         url: t.src.replace('%s', id1) + `?transparent=1&palette=1&scale=${scale}`,
                         folder: f1,
-                        filename: `${n1}__${tag}${suf}.png`
+                        filename: filename1
                     });
+                    // Ajout au JSON pour l'utilisateur 1
+                    metadataExport.push({ fichier: filename1, ...imgData });
+                    
                     if(id2) {
+                        const filename2 = `${n2}__${tag}${suf}.png`;
                         tasks.push({
                             url: t.src.replace('%s', id2) + `?transparent=1&palette=1&scale=${scale}`,
                             folder: f2,
-                            filename: `${n2}__${tag}${suf}.png`
+                            filename: filename2
                         });
+                        // Ajout au JSON pour l'utilisateur 2
+                        metadataExport.push({ fichier: filename2, ...imgData });
                     }
                 } else {
                     let url = t.src.replace('%s', id1);
                     if(url.includes('%s')) url = url.replace('%s', id2);
                     
+                    const filenameDuo = `${n1}__${n2}__${tag}${suf}.png`;
                     tasks.push({
                         url: url + `?transparent=1&palette=1&scale=${scale}`,
                         folder: zip,
-                        filename: `${n1}__${n2}__${tag}${suf}.png`
+                        filename: filenameDuo
                     });
+                    // Ajout au JSON pour le duo
+                    metadataExport.push({ fichier: filenameDuo, ...imgData });
                 }
             }
 
@@ -512,11 +530,9 @@
             for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
                 const batch = tasks.slice(i, i + BATCH_SIZE);
                 
-                // On met à jour l'interface avec la progression
                 btn.innerHTML = `<i data-lucide="loader-2" class="w-7 h-7 animate-spin"></i> ${completed} / ${tasks.length}`;
                 lucide.createIcons();
 
-                // On lance le paquet de 15 téléchargements en même temps
                 await Promise.all(batch.map(async (task) => {
                     try {
                         const response = await fetch(task.url);
@@ -535,8 +551,11 @@
             btn.innerHTML = `<i data-lucide="loader-2" class="w-7 h-7 animate-spin"></i> COMPRESSION...`;
             lucide.createIcons();
 
+            // NOUVEAU : On ajoute le fichier JSON au dossier racine du ZIP
+            zip.file("metadata.json", JSON.stringify(metadataExport, null, 2));
+
             const content = await zip.generateAsync({type:"blob"});
-            saveAs(content, `PoseExplorer_${n1}__${currentMode}.zip`);
+            saveAs(content, `AvatarForge__${n1}__${currentMode}.zip`);
             
             // Remise à zéro
             btn.innerHTML = `<i data-lucide="folder-archive" class="w-7 h-7"></i> GÉNÉRER ZIP`;
