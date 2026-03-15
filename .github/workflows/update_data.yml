@@ -1,0 +1,31 @@
+name: Mise à jour automatique du catalogue
+
+on:
+  push:
+    branches: [ main ] # Se lance à chaque fois que tu envoies du code
+  schedule:
+    - cron: '0 0 * * 1' # Se lance aussi tous les lundis à minuit automatiquement
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Récupération du code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Installation de Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: ⚙️ Exécution du script de mise à jour
+        run: node get_templates.js
+
+      - name: 📤 Sauvegarde des changements sur GitHub
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add templates_fr.json templates_en.json aide.json
+          git commit -m "🚀 Mise à jour auto du catalogue et de l'aide" || echo "Pas de changements"
+          git push
