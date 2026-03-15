@@ -442,7 +442,7 @@
 
         function closeLightbox() { document.getElementById('lightbox').classList.add('hidden'); }
 
-        async function downloadAllAsZip() {
+ async function downloadAllAsZip() {
             const zip = new JSZip();
             const btn = document.getElementById('zipBtn');
             const id1 = document.getElementById('id1').value, id2 = document.getElementById('id2').value;
@@ -468,11 +468,11 @@
                 return matchSearch && matchCategory;
             });
 
-            // ÉTAPE 1 : Préparer les tâches ET séparer les métadonnées par utilisateur
+            // ÉTAPE 1 : Préparer les tâches et les métadonnées
             const tasks = [];
             const nameCount = {};
-            const metadataUser1 = []; // JSON pour l'utilisateur 1
-            const metadataUser2 = []; // JSON pour l'utilisateur 2
+            const metadataUser1 = []; 
+            const metadataUser2 = []; 
             const metadataDuo = [];   // JSON pour le mode duo
             
             let f1, f2;
@@ -503,7 +503,7 @@
                     });
                     metadataUser1.push({ fichier: filename1, ...imgData });
                     
-                    // Pour l'utilisateur 2 (s'il existe)
+                    // Pour l'utilisateur 2
                     if(id2) {
                         const filename2 = `${n2}__${tag}${suf}.png`;
                         tasks.push({
@@ -514,17 +514,33 @@
                         metadataUser2.push({ fichier: filename2, ...imgData });
                     }
                 } else {
-                    // Pour le mode Duo
-                    let url = t.src.replace('%s', id1);
-                    if(url.includes('%s')) url = url.replace('%s', id2);
+                    // ==========================================
+                    // MODE DUO : ON FAIT LES DEUX SENS !
+                    // ==========================================
                     
-                    const filenameDuo = `${n1}__${n2}__${tag}${suf}.png`;
+                    // Sens 1 : Utilisateur 1 d'abord, Utilisateur 2 ensuite
+                    let url1 = t.src.replace('%s', id1);
+                    if(url1.includes('%s')) url1 = url1.replace('%s', id2);
+                    
+                    const filenameDuo1 = `${n1}__${n2}__${tag}${suf}.png`;
                     tasks.push({
-                        url: url + `?transparent=1&palette=1&scale=${scale}`,
+                        url: url1 + `?transparent=1&palette=1&scale=${scale}`,
                         folder: zip,
-                        filename: filenameDuo
+                        filename: filenameDuo1
                     });
-                    metadataDuo.push({ fichier: filenameDuo, ...imgData });
+                    metadataDuo.push({ fichier: filenameDuo1, ...imgData });
+
+                    // Sens 2 : Utilisateur 2 d'abord, Utilisateur 1 ensuite (Inversion)
+                    let url2 = t.src.replace('%s', id2);
+                    if(url2.includes('%s')) url2 = url2.replace('%s', id1);
+                    
+                    const filenameDuo2 = `${n2}__${n1}__${tag}${suf}.png`;
+                    tasks.push({
+                        url: url2 + `?transparent=1&palette=1&scale=${scale}`,
+                        folder: zip,
+                        filename: filenameDuo2
+                    });
+                    metadataDuo.push({ fichier: filenameDuo2, ...imgData });
                 }
             }
 
@@ -552,25 +568,20 @@
                 completed += batch.length;
             }
 
-            // ÉTAPE 3 : Création finale du ZIP avec les JSON dans les bons dossiers
+            // ÉTAPE 3 : Création finale du ZIP
             btn.innerHTML = `<i data-lucide="loader-2" class="w-7 h-7 animate-spin"></i> COMPRESSION...`;
             lucide.createIcons();
 
             if (currentMode === 'solo') {
-                // On met le JSON de l'User 1 dans le dossier de l'User 1
                 f1.file(`metadata_${n1}.json`, JSON.stringify(metadataUser1, null, 2));
-                
-                // On met le JSON de l'User 2 dans le dossier de l'User 2
-                if(id2) {
-                    f2.file(`metadata_${n2}.json`, JSON.stringify(metadataUser2, null, 2));
-                }
+                if(id2) f2.file(`metadata_${n2}.json`, JSON.stringify(metadataUser2, null, 2));
             } else {
-                // En mode duo, on le met à la racine
-                zip.file(`metadata_${n1}_${n2}.json`, JSON.stringify(metadataDuo, null, 2));
+                // Création du fichier avec le nom exact pour ton Home Assistant
+                zip.file(`metadata_Duo.json`, JSON.stringify(metadataDuo, null, 2));
             }
 
             const content = await zip.generateAsync({type:"blob"});
-            saveAs(content, `PoseExplorer__${n1}__${currentMode}.zip`);
+            saveAs(content, `AvatarForge__${currentMode === 'solo' ? n1 : 'Duo'}.zip`);
             
             // Remise à zéro
             btn.innerHTML = `<i data-lucide="folder-archive" class="w-7 h-7"></i> GÉNÉRER ZIP`;
