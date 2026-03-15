@@ -468,20 +468,25 @@
                 return matchSearch && matchCategory;
             });
 
-            // ÉTAPE 1 : Préparer les tâches ET les métadonnées
+            // ÉTAPE 1 : Préparer les tâches ET séparer les métadonnées par utilisateur
             const tasks = [];
             const nameCount = {};
-            const metadataExport = []; // NOUVEAU : Tableau pour stocker les infos du JSON
+            const metadataUser1 = []; // JSON pour l'utilisateur 1
+            const metadataUser2 = []; // JSON pour l'utilisateur 2
+            const metadataDuo = [];   // JSON pour le mode duo
+            
             let f1, f2;
             
-            if(currentMode === 'solo') { f1 = zip.folder(n1); f2 = zip.folder(n2); }
+            if(currentMode === 'solo') { 
+                f1 = zip.folder(n1); 
+                f2 = zip.folder(n2); 
+            }
 
             for (let t of filteredList) {
                 let tag = formatPoseName(t.displayTag);
                 nameCount[tag] = (nameCount[tag] || 0) + 1;
                 const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
                 
-                // Préparation des données brutes pour le JSON
                 const imgData = {
                     titre: t.displayTag,
                     mots_cles: t.keywords,
@@ -489,15 +494,16 @@
                 };
                 
                 if (currentMode === 'solo') {
+                    // Pour l'utilisateur 1
                     const filename1 = `${n1}__${tag}${suf}.png`;
                     tasks.push({
                         url: t.src.replace('%s', id1) + `?transparent=1&palette=1&scale=${scale}`,
                         folder: f1,
                         filename: filename1
                     });
-                    // Ajout au JSON pour l'utilisateur 1
-                    metadataExport.push({ fichier: filename1, ...imgData });
+                    metadataUser1.push({ fichier: filename1, ...imgData });
                     
+                    // Pour l'utilisateur 2 (s'il existe)
                     if(id2) {
                         const filename2 = `${n2}__${tag}${suf}.png`;
                         tasks.push({
@@ -505,10 +511,10 @@
                             folder: f2,
                             filename: filename2
                         });
-                        // Ajout au JSON pour l'utilisateur 2
-                        metadataExport.push({ fichier: filename2, ...imgData });
+                        metadataUser2.push({ fichier: filename2, ...imgData });
                     }
                 } else {
+                    // Pour le mode Duo
                     let url = t.src.replace('%s', id1);
                     if(url.includes('%s')) url = url.replace('%s', id2);
                     
@@ -518,8 +524,7 @@
                         folder: zip,
                         filename: filenameDuo
                     });
-                    // Ajout au JSON pour le duo
-                    metadataExport.push({ fichier: filenameDuo, ...imgData });
+                    metadataDuo.push({ fichier: filenameDuo, ...imgData });
                 }
             }
 
@@ -547,12 +552,22 @@
                 completed += batch.length;
             }
 
-            // ÉTAPE 3 : Création finale du ZIP
+            // ÉTAPE 3 : Création finale du ZIP avec les JSON dans les bons dossiers
             btn.innerHTML = `<i data-lucide="loader-2" class="w-7 h-7 animate-spin"></i> COMPRESSION...`;
             lucide.createIcons();
 
-            // NOUVEAU : On ajoute le fichier JSON au dossier racine du ZIP
-            zip.file("metadata.json", JSON.stringify(metadataExport, null, 2));
+            if (currentMode === 'solo') {
+                // On met le JSON de l'User 1 dans le dossier de l'User 1
+                f1.file(`metadata_${n1}.json`, JSON.stringify(metadataUser1, null, 2));
+                
+                // On met le JSON de l'User 2 dans le dossier de l'User 2
+                if(id2) {
+                    f2.file(`metadata_${n2}.json`, JSON.stringify(metadataUser2, null, 2));
+                }
+            } else {
+                // En mode duo, on le met à la racine
+                zip.file(`metadata_${n1}_${n2}.json`, JSON.stringify(metadataDuo, null, 2));
+            }
 
             const content = await zip.generateAsync({type:"blob"});
             saveAs(content, `AvatarForge__${n1}__${currentMode}.zip`);
