@@ -1,0 +1,14 @@
+{
+  "date_maj": "15 mars 2026",
+  "stats": {
+    "fr": {
+      "solo": 1257,
+      "duo": 614
+    },
+    "en": {
+      "solo": 1970,
+      "duo": 1049
+    }
+  },
+  "guide": "Bienvenue dans la Forge Bitmoji ! \n\n1. Entrez l'ID Bitmoji de l'utilisateur 1 (et 2 pour les duos).\n2. Utilisez les filtres pour trouver la pose parfaite.\n3. Cliquez sur une image pour la télécharger en HD, ou générez un ZIP contenant toutes les images filtrées.\n\n(D'autres aides seront ajoutées ici plus tard...)"
+}
