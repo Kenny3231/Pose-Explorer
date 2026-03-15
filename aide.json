@@ -10,5 +10,4 @@
       "duo": 1049
     }
   },
-  "guide": "Bienvenue dans la Forge Bitmoji ! \n\n1. Entrez l'ID Bitmoji de l'utilisateur 1 (et 2 pour les duos).\n2. Utilisez les filtres pour trouver la pose parfaite.\n3. Cliquez sur une image pour la télécharger en HD, ou générez un ZIP contenant toutes les images filtrées.\n\n(D'autres aides seront ajoutées ici plus tard...)"
-}
+"guide": "### 📖 Guide d'utilisation\n1. Entrez l'ID Bitmoji (disponible dans les options de partage de l'application officielle).\n2. Utilisez la recherche pour trouver des émotions ou des thèmes précis.\n3. Cliquez sur une image pour la voir en grand et la télécharger.\n\n### ⚠️ Mentions Légales\nCe projet est une application **non-officielle** à but éducatif. Le nom 'Bitmoji' et tous les visuels associés sont la propriété exclusive de **Snap Inc.**. Ce site n'est pas affilié à Snap Inc."}
