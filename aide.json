@@ -1,13 +1,14 @@
 {
-  "date_maj": "15 mars 2026",
+  "date_maj": "6 avril 2026",
   "stats": {
     "fr": {
-      "solo": 1257,
+      "solo": 1259,
       "duo": 614
     },
     "en": {
-      "solo": 1970,
-      "duo": 1049
+      "solo": 1973,
+      "duo": 1050
     }
   },
-"guide": "### 📖 Guide d'utilisation\n1. Entrez l'ID Bitmoji (disponible dans les options de partage de l'application officielle).\n2. Utilisez la recherche pour trouver des émotions ou des thèmes précis.\n3. Cliquez sur une image pour la voir en grand et la télécharger.\n\n### ⚠️ Mentions Légales\nCe projet est une application **non-officielle** à but éducatif. Le nom 'Bitmoji' et tous les visuels associés sont la propriété exclusive de **Snap Inc.**. Ce site n'est pas affilié à Snap Inc."}
+  "guide": "### 📖 Guide d'utilisation\n1. Entrez l'ID Bitmoji (disponible dans les options de partage de l'application officielle).\n2. Utilisez la recherche pour trouver des émotions ou des thèmes précis.\n3. Cliquez sur une image pour la voir en grand et la télécharger.\n\n### ⚠️ Mentions Légales\nCe projet est une application **non-officielle** à but éducatif. Le nom 'Bitmoji' et tous les visuels associés sont la propriété exclusive de **Snap Inc.**. Ce site n'est pas affilié à Snap Inc."
+}
