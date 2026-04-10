@@ -8,87 +8,94 @@ export async function onRequest(context) {
     const n2 = url.searchParams.get('name2') || 'Utilisateur2';
     const mode = url.searchParams.get('mode') || 'solo';
     const scale = url.searchParams.get('scale') || '2';
-    
-    let customDir = url.searchParams.get('dir') || 'bitmojis';
-    customDir = customDir.replace(/^\/+|\/+$/g, '');
-    const targetDir = `/config/www/${customDir}`;
+    const dir = url.searchParams.get('dir') || 'bitmojis';
+    const type = url.searchParams.get('type'); 
 
-    if (!id1) return new Response("echo 'Erreur : id1 manquant'\n", { status: 400 });
+    // 1. Chargement des données
+    let templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/public/templates_fr.json');
+    if (!templateReq.ok) templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/templates_fr.json');
+    const rawData = await templateReq.json();
 
-    try {
-        let templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/public/templates_fr.json');
-        if (!templateReq.ok) templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/templates_fr.json');
-        
-        const rawData = await templateReq.json();
-        const soloList = rawData.imoji;
-        const duoList = rawData.friends;
+    // Nettoyage : On garde les espaces, on enlève juste les caractères interdits pour les fichiers
+    const formatPoseName = (str) => {
+        if (!str) return "pose";
+        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/'/g, " ").toLowerCase().replace(/[^a-z0-9 ]/g, "_").trim();
+    };
 
-        const formatPoseName = (str) => {
-            if (!str) return "pose";
-            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/'/g, " ").toLowerCase().replace(/[^a-z0-9 ]/g, "_").trim();
-        };
+    // --- PARTIE 2 : GENERATION DU JSON (TYPE=JSON) ---
+    if (type === 'json') {
+        const user = url.searchParams.get('user') || '1';
+        const list = mode === 'solo' ? rawData.imoji : rawData.friends;
+        let metadata = [];
+        const nameCount = {};
+        const currentName = user === '1' ? n1 : n2;
 
-        let script = "#!/bin/bash\n";
-        script += "echo '--- DEBUT DU TELECHARGEMENT ---'\n";
-
-        if (mode === 'solo') {
-            const processSolo = (list, id, name) => {
-                let cmds = `echo 'Traitement de ${name}...'\n`;
-                let metadata = [];
-                const nameCount = {};
-
-                for (let t of list) {
-                    let tag = formatPoseName(t.displayTag);
-                    nameCount[tag] = (nameCount[tag] || 0) + 1;
-                    const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
-                    const filename = `${name}__${tag}${suf}.png`;
-                    
-                    let imgUrl = t.src.replace('%s', id) + `?transparent=1&palette=1&scale=${scale}`;
-                    cmds += `wget -q -U "Mozilla/5.0" -O "${targetDir}/${name}/${filename}" "${imgUrl}"\n`;
-                    metadata.push({ fichier: filename, titre: t.displayTag });
-                }
-                
-                // Utilisation de <<'EOF' (avec quotes) pour protéger le JSON
-                cmds += `echo 'Génération du fichier JSON pour ${name}...'\n`;
-                cmds += `cat <<'EOF' > "${targetDir}/${name}/metadata_${name}.json"\n${JSON.stringify(metadata, null, 2)}\nEOF\n`;
-                return cmds;
-            };
-
-            script += processSolo(soloList, id1, n1);
-            if (id2) script += processSolo(soloList, id2, n2);
-
-        } else {
-            // MODE DUO
-            let metadataDuo = [];
-            const nameCountDuo = {};
-
-            script += `echo 'Traitement Duo...'\n`;
-            for (let t of duoList) {
-                let tag = formatPoseName(t.displayTag);
-                nameCountDuo[tag] = (nameCountDuo[tag] || 0) + 1;
-                const suf = nameCountDuo[tag] === 1 ? "" : `_${nameCountDuo[tag]}`;
-                
+        for (let t of list) {
+            let tag = formatPoseName(t.displayTag);
+            nameCount[tag] = (nameCount[tag] || 0) + 1;
+            const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
+            
+            if (mode === 'solo') {
+                const filename = `${currentName}__${tag}${suf}.png`;
+                metadata.push({ 
+                    fichier: filename, 
+                    titre: t.displayTag, 
+                    mots_cles: t.keywords || "", 
+                    categories: t.categories || [] 
+                });
+            } else {
+                // Mode Duo : on génère les deux sens dans le même JSON
                 const f1 = `${n1}__${n2}__${tag}${suf}.png`;
-                let u1 = t.src.replace('%s', id1).replace('%s', id2) + `?transparent=1&palette=1&scale=${scale}`;
-                script += `wget -q -U "Mozilla/5.0" -O "${targetDir}/Duo/${f1}" "${u1}"\n`;
-                metadataDuo.push({ fichier: f1, titre: t.displayTag });
-
+                metadata.push({ fichier: f1, titre: t.displayTag, mots_cles: t.keywords || "", categories: t.categories || [] });
                 const f2 = `${n2}__${n1}__${tag}${suf}.png`;
-                let u2 = t.src.replace('%s', id2).replace('%s', id1) + `?transparent=1&palette=1&scale=${scale}`;
-                script += `wget -q -U "Mozilla/5.0" -O "${targetDir}/Duo/${f2}" "${u2}"\n`;
-                metadataDuo.push({ fichier: f2, titre: t.displayTag });
+                metadata.push({ fichier: f2, titre: t.displayTag, mots_cles: t.keywords || "", categories: t.categories || [] });
             }
-            script += `echo 'Génération du fichier JSON Duo...'\n`;
-            script += `cat <<'EOF' > "${targetDir}/Duo/metadata_Duo.json"\n${JSON.stringify(metadataDuo, null, 2)}\nEOF\n`;
         }
-
-        script += "echo '--- TERMINE AVEC SUCCES ---'\n";
-
-        return new Response(script, {
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-        });
-
-    } catch (error) {
-        return new Response(`echo 'Erreur : ${error.message}'\n`, { status: 500 });
+        return new Response(JSON.stringify(metadata, null, 2), { headers: { 'Content-Type': 'application/json' } });
     }
+
+    // --- PARTIE 3 : GENERATION DU SCRIPT BASH ---
+    const targetDir = `/config/www/${dir.replace(/^\/+|\/+$/g, '')}`;
+    let script = "#!/bin/bash\n";
+    const apiBase = `https://pose-explorer.pages.dev/api/export?id1=${id1}&id2=${id2}&name1=${n1}&name2=${n2}&mode=${mode}&type=json`;
+
+    const generateDownloadCommands = (list, id, name, userNum) => {
+        let cmds = `echo 'Téléchargement images ${name}...'\n`;
+        const nameCount = {};
+        for (let t of list) {
+            let tag = formatPoseName(t.displayTag);
+            nameCount[tag] = (nameCount[tag] || 0) + 1;
+            const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
+            let imgUrl = t.src.replace('%s', id) + `?transparent=1&palette=1&scale=${scale}`;
+            // On utilise des guillemets pour wget à cause des espaces
+            cmds += `wget -q -U "Mozilla/5.0" -O "${targetDir}/${name}/${name}__${tag}${suf}.png" "${imgUrl}"\n`;
+        }
+        cmds += `echo 'Récupération du JSON metadata_${name}.json...'\n`;
+        cmds += `wget -q -O "${targetDir}/${name}/metadata_${name}.json" "${apiBase}&user=${userNum}"\n`;
+        return cmds;
+    };
+
+    if (mode === 'solo') {
+        script += generateDownloadCommands(rawData.imoji, id1, n1, '1');
+        if (id2) script += generateDownloadCommands(rawData.imoji, id2, n2, '2');
+    } else {
+        script += generateDownloadCommands(rawData.imoji, id1, n1, '1');
+        script += generateDownloadCommands(rawData.imoji, id2, n2, '2');
+        script += `echo 'Téléchargement images Duo...'\n`;
+        const nameCountDuo = {};
+        for (let t of rawData.friends) {
+            let tag = formatPoseName(t.displayTag);
+            nameCountDuo[tag] = (nameCountDuo[tag] || 0) + 1;
+            const suf = nameCountDuo[tag] === 1 ? "" : `_${nameCountDuo[tag]}`;
+            let u1 = t.src.replace('%s', id1).replace('%s', id2) + `?transparent=1&palette=1&scale=${scale}`;
+            script += `wget -q -U "Mozilla/5.0" -O "${targetDir}/Duo/${n1}__${n2}__${tag}${suf}.png" "${u1}"\n`;
+            let u2 = t.src.replace('%s', id2).replace('%s', id1) + `?transparent=1&palette=1&scale=${scale}`;
+            script += `wget -q -U "Mozilla/5.0" -O "${targetDir}/Duo/${n2}__${n1}__${tag}${suf}.png" "${u2}"\n`;
+        }
+        script += `echo 'Récupération du JSON metadata_Duo.json...'\n`;
+        script += `wget -q -O "${targetDir}/Duo/metadata_Duo.json" "${apiBase}"\n`;
+    }
+
+    script += "echo '--- TERMINE AVEC SUCCES ---'\n";
+    return new Response(script, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 }
