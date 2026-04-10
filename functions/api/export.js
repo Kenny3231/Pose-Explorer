@@ -23,24 +23,17 @@ export async function onRequest(context) {
         const soloList = rawData.imoji;
         const duoList = rawData.friends;
 
-        // On garde les espaces mais on nettoie les accents et symboles interdits
         const formatPoseName = (str) => {
             if (!str) return "pose";
-            return str.normalize("NFD")
-                      .replace(/[\u0300-\u036f]/g, "")
-                      .replace(/'/g, " ")
-                      .toLowerCase()
-                      .replace(/[^a-z0-9 ]/g, "_") // On autorise l'espace ici
-                      .trim();
+            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/'/g, " ").toLowerCase().replace(/[^a-z0-9 ]/g, "_").trim();
         };
 
         let script = "#!/bin/bash\n";
         script += "echo '--- DEBUT DU TELECHARGEMENT ---'\n";
 
         if (mode === 'solo') {
-            // --- LOGIQUE SOLO ---
             const processSolo = (list, id, name) => {
-                let cmds = `echo 'Traitement pour ${name}...'\n`;
+                let cmds = `echo 'Traitement de ${name}...'\n`;
                 let metadata = [];
                 const nameCount = {};
 
@@ -52,11 +45,12 @@ export async function onRequest(context) {
                     
                     let imgUrl = t.src.replace('%s', id) + `?transparent=1&palette=1&scale=${scale}`;
                     cmds += `wget -q -U "Mozilla/5.0" -O "${targetDir}/${name}/${filename}" "${imgUrl}"\n`;
-                    
-                    metadata.push({ fichier: filename, titre: t.displayTag, categories: t.categories || [] });
+                    metadata.push({ fichier: filename, titre: t.displayTag });
                 }
-                // Ecriture du JSON localement sur HA
-                cmds += `cat <<EOF > "${targetDir}/${name}/metadata_${name}.json"\n${JSON.stringify(metadata, null, 2)}\nEOF\n`;
+                
+                // Utilisation de <<'EOF' (avec quotes) pour protéger le JSON
+                cmds += `echo 'Génération du fichier JSON pour ${name}...'\n`;
+                cmds += `cat <<'EOF' > "${targetDir}/${name}/metadata_${name}.json"\n${JSON.stringify(metadata, null, 2)}\nEOF\n`;
                 return cmds;
             };
 
@@ -64,46 +58,31 @@ export async function onRequest(context) {
             if (id2) script += processSolo(soloList, id2, n2);
 
         } else {
-            // --- LOGIQUE DUO ---
-            // On fait quand même les solos avant comme demandé
-            const processSoloMinimal = (list, id, name) => {
-                let cmds = `echo 'Solo ${name}...'\n`;
-                for (let t of list) {
-                    let tag = formatPoseName(t.displayTag);
-                    let imgUrl = t.src.replace('%s', id) + `?transparent=1&palette=1&scale=${scale}`;
-                    cmds += `wget -q -U "Mozilla/5.0" -O "${targetDir}/${name}/${name}__${tag}.png" "${imgUrl}"\n`;
-                }
-                return cmds;
-            };
-
-            script += processSoloMinimal(soloList, id1, n1);
-            script += processSoloMinimal(soloList, id2, n2);
-
-            script += "echo 'Traitement Duo...'\n";
+            // MODE DUO
             let metadataDuo = [];
             const nameCountDuo = {};
 
+            script += `echo 'Traitement Duo...'\n`;
             for (let t of duoList) {
                 let tag = formatPoseName(t.displayTag);
                 nameCountDuo[tag] = (nameCountDuo[tag] || 0) + 1;
                 const suf = nameCountDuo[tag] === 1 ? "" : `_${nameCountDuo[tag]}`;
                 
-                // Sens 1
                 const f1 = `${n1}__${n2}__${tag}${suf}.png`;
                 let u1 = t.src.replace('%s', id1).replace('%s', id2) + `?transparent=1&palette=1&scale=${scale}`;
                 script += `wget -q -U "Mozilla/5.0" -O "${targetDir}/Duo/${f1}" "${u1}"\n`;
                 metadataDuo.push({ fichier: f1, titre: t.displayTag });
 
-                // Sens 2
                 const f2 = `${n2}__${n1}__${tag}${suf}.png`;
                 let u2 = t.src.replace('%s', id2).replace('%s', id1) + `?transparent=1&palette=1&scale=${scale}`;
                 script += `wget -q -U "Mozilla/5.0" -O "${targetDir}/Duo/${f2}" "${u2}"\n`;
                 metadataDuo.push({ fichier: f2, titre: t.displayTag });
             }
-            script += `cat <<EOF > "${targetDir}/Duo/metadata_Duo.json"\n${JSON.stringify(metadataDuo, null, 2)}\nEOF\n`;
+            script += `echo 'Génération du fichier JSON Duo...'\n`;
+            script += `cat <<'EOF' > "${targetDir}/Duo/metadata_Duo.json"\n${JSON.stringify(metadataDuo, null, 2)}\nEOF\n`;
         }
 
-        script += "echo '--- TERMINE AVEC SUCCES (IMAGES + JSON) ---'\n";
+        script += "echo '--- TERMINE AVEC SUCCES ---'\n";
 
         return new Response(script, {
             headers: { 'Content-Type': 'text/plain; charset=utf-8' }
