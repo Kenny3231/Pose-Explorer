@@ -1,7 +1,7 @@
 {
   "name": "pose-explorer",
   "version": "1.0.0",
-  "dependencies": {
+  "dependencies": { 
     "jszip": "^3.10.1"
   }
 }
