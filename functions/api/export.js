@@ -71,12 +71,12 @@ export async function onRequest(context) {
                 let urlDuo1 = t.src.replace('%s', id1);
                 if(urlDuo1.includes('%s')) urlDuo1 = urlDuo1.replace('%s', id2);
                 urlDuo1 += `?transparent=1&palette=1&scale=${scale}`;
-                script += `wget -q -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -O "${targetDir}/Duo/${n1}__${n2}__${tag}${suf}.png" "${urlDuo1}"\n`;
+                script += `wget -q -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -O "${targetDir}/Duo/${n1}__${n2}__${tag}${suf}.png\r" "${urlDuo1}"\n`;
 
                 let urlDuo2 = t.src.replace('%s', id2);
                 if(urlDuo2.includes('%s')) urlDuo2 = urlDuo2.replace('%s', id1);
                 urlDuo2 += `?transparent=1&palette=1&scale=${scale}`;
-                script += `wget -q -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -O "${targetDir}/Duo/${n2}__${n1}__${tag}${suf}.png" "${urlDuo2}"\n`;
+                script += `wget -q -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -O "${targetDir}/Duo/${n2}__${n1}__${tag}${suf}.png\r" "${urlDuo2}"\n`;
             }
             script += "\n";
         }
