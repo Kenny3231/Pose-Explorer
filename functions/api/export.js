@@ -1,174 +1,111 @@
-import JSZip from 'jszip';
-
-// Les mêmes fonctions de nettoyage que dans ton HTML
-function formatPoseName(str) {
-    if (!str) return "pose";
-    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/'/g, " ").toLowerCase().replace(/[^a-z0-9 ]/g, "_").trim();
-}
-
-function normalizeStr(str) {
-    if (!str) return "";
-    return str.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-}
-
 export async function onRequest(context) {
     const { request } = context;
     const url = new URL(request.url);
     
-    // Récupération de tous tes paramètres
+    // 1. Paramètres Utilisateurs
     const id1 = url.searchParams.get('id1');
     const id2 = url.searchParams.get('id2');
     const n1 = url.searchParams.get('name1') || 'Utilisateur1';
     const n2 = url.searchParams.get('name2') || 'Utilisateur2';
     const mode = url.searchParams.get('mode') || 'solo';
+    
+    // 2. La Qualité (1 = Web, 2 = HD, 4 = Ultra)
     const scale = url.searchParams.get('scale') || '2';
-    const search = normalizeStr(url.searchParams.get('search') || '');
-    const categoryInput = normalizeStr(url.searchParams.get('categoryInput') || '');
+    
+    // 3. Le Chemin (dir) : On enlève les slashs inutiles si l'utilisateur se trompe
+    let customDir = url.searchParams.get('dir') || 'bitmojis';
+    customDir = customDir.replace(/^\/+|\/+$/g, ''); // Transforme "/images/avatar/" en "images/avatar"
+    const targetDir = `/config/www/${customDir}`; // Résultat : /config/www/images/avatar
 
-    if (!id1 || (mode === 'duo' && !id2)) {
-        return new Response("Erreur : Les IDs Bitmoji sont manquants.", { status: 400 });
+    if (!id1) {
+        return new Response("echo 'Erreur : id1 manquant'", { status: 400 });
+    }
+    if (mode === 'duo' && !id2) {
+        return new Response("echo 'Erreur : id2 manquant pour le mode Duo'", { status: 400 });
     }
 
-    const zip = new JSZip();
-
     try {
-        // 1. Récupération des données (templates)
+        // Récupération des catalogues JSON
         let templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/public/templates_fr.json');
-        if (!templateReq.ok) {
-            templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/templates_fr.json');
-        }
+        if (!templateReq.ok) templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/templates_fr.json');
         
         const rawData = await templateReq.json();
-        const list = mode === 'solo' ? rawData.imoji : rawData.friends;
+        const soloList = rawData.imoji;
+        const duoList = rawData.friends;
 
-        // Filtre identique à ton HTML
-        const filteredList = list.filter(t => {
-            const normalizedKeywords = normalizeStr(t.keywords);
-            const matchSearch = normalizedKeywords.includes(search);
-            let matchCategory = true;
-            if (categoryInput !== '') {
-                matchCategory = t.categories && t.categories.some(c => normalizeStr(c).includes(categoryInput));
+        // Début du script Bash pour Home Assistant
+        let script = `#!/bin/bash\n`;
+        script += `echo "--- DÉBUT DU TÉLÉCHARGEMENT DES BITMOJIS ---"\n`;
+        script += `echo "Dossier cible : ${targetDir}"\n\n`;
+
+        // Fonction utilitaire de nettoyage des noms
+        const formatPoseName = (str) => {
+            if (!str) return "pose";
+            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/'/g, " ").toLowerCase().replace(/[^a-z0-9 ]/g, "_").trim();
+        };
+
+        // Fonction pour générer le script d'un dossier Solo
+        const generateSoloCommands = (list, id, name) => {
+            let cmds = `echo "Création du dossier pour ${name}..."\n`;
+            cmds += `mkdir -p "${targetDir}/${name}"\n`;
+            const nameCount = {};
+            
+            for (let t of list) {
+                let tag = formatPoseName(t.displayTag);
+                nameCount[tag] = (nameCount[tag] || 0) + 1;
+                const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
+                
+                let imgUrl = t.src.replace('%s', id) + `?transparent=1&palette=1&scale=${scale}`;
+                cmds += `wget -q -O "${targetDir}/${name}/${name}__${tag}${suf}.png" "${imgUrl}"\n`;
             }
-            return matchSearch && matchCategory;
-        });
+            return cmds + "\n";
+        };
 
-        // 2. ÉTAPE 1 du HTML : Préparer les tâches, les dossiers et les métadonnées
-        const tasks = [];
-        const nameCount = {};
-        const metadataUser1 = []; 
-        const metadataUser2 = []; 
-        const metadataDuo = [];
+        // ==========================================
+        // LOGIQUE DES DOSSIERS (SOLO vs DUO)
+        // ==========================================
         
-        let f1, f2;
-        if(mode === 'solo') { 
-            f1 = zip.folder(n1); 
-            f2 = zip.folder(n2); 
-        }
-
-        for (let t of filteredList) {
-            let tag = formatPoseName(t.displayTag);
-            nameCount[tag] = (nameCount[tag] || 0) + 1;
-            const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
-            
-            const imgData = { titre: t.displayTag, mots_cles: t.keywords, categories: t.categories || [] };
-            
-            if (mode === 'solo') {
-                // Pour l'utilisateur 1
-                const filename1 = `${n1}__${tag}${suf}.png`;
-                tasks.push({
-                    url: t.src.replace('%s', id1) + `?transparent=1&palette=1&scale=${scale}`,
-                    folder: f1,
-                    filename: filename1
-                });
-                metadataUser1.push({ fichier: filename1, ...imgData });
-                
-                // Pour l'utilisateur 2
-                if(id2) {
-                    const filename2 = `${n2}__${tag}${suf}.png`;
-                    tasks.push({
-                        url: t.src.replace('%s', id2) + `?transparent=1&palette=1&scale=${scale}`,
-                        folder: f2,
-                        filename: filename2
-                    });
-                    metadataUser2.push({ fichier: filename2, ...imgData });
-                }
-            } else {
-                // MODE DUO : Les deux sens !
-                // Sens 1 : n1 puis n2
-                let url1 = t.src.replace('%s', id1);
-                if(url1.includes('%s')) url1 = url1.replace('%s', id2);
-                
-                const filenameDuo1 = `${n1}__${n2}__${tag}${suf}.png`;
-                tasks.push({
-                    url: url1 + `?transparent=1&palette=1&scale=${scale}`,
-                    folder: zip,
-                    filename: filenameDuo1
-                });
-                metadataDuo.push({ fichier: filenameDuo1, ...imgData });
-
-                // Sens 2 : n2 puis n1
-                let url2 = t.src.replace('%s', id2);
-                if(url2.includes('%s')) url2 = url2.replace('%s', id1);
-                
-                const filenameDuo2 = `${n2}__${n1}__${tag}${suf}.png`;
-                tasks.push({
-                    url: url2 + `?transparent=1&palette=1&scale=${scale}`,
-                    folder: zip,
-                    filename: filenameDuo2
-                });
-                metadataDuo.push({ fichier: filenameDuo2, ...imgData });
-            }
-        }
-
-        // 3. ÉTAPE 2 du HTML : Téléchargements en parallèle (par lots de 15)
-        const BATCH_SIZE = 15;
-        let logErreurs = "";
-
-        for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
-            const batch = tasks.slice(i, i + BATCH_SIZE);
-            
-            await Promise.all(batch.map(async (task) => {
-                try {
-                    // On garde l'astuce "Google Chrome" pour ne pas se faire bloquer
-                    const response = await fetch(task.url, {
-                        headers: {
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                            "Accept": "image/webp,image/png,image/*,*/*;q=0.8"
-                        }
-                    });
-                    if (response.ok) {
-                        const arrayBuffer = await response.arrayBuffer();
-                        task.folder.file(task.filename, arrayBuffer); // Sauvegarde dans le bon sous-dossier
-                    } else {
-                        logErreurs += `[Erreur ${response.status}] Image refusée : ${task.filename}\n`;
-                    }
-                } catch (e) {
-                    logErreurs += `[Erreur Réseau] : ${task.filename}\n`;
-                }
-            }));
-        }
-
-        // 4. ÉTAPE 3 du HTML : Création finale du ZIP (avec les JSON au bon endroit)
         if (mode === 'solo') {
-            f1.file(`metadata_${n1}.json`, JSON.stringify(metadataUser1, null, 2));
-            if(id2) f2.file(`metadata_${n2}.json`, JSON.stringify(metadataUser2, null, 2));
+            // MODE SOLO : Juste le dossier de Utilisateur 1
+            script += generateSoloCommands(soloList, id1, n1);
+            
         } else {
-            zip.file(`metadata_Duo.json`, JSON.stringify(metadataDuo, null, 2));
+            // MODE DUO : 3 Dossiers (User1, User2 et Duo)
+            script += generateSoloCommands(soloList, id1, n1); // Dossier 1
+            script += generateSoloCommands(soloList, id2, n2); // Dossier 2
+
+            // Création du Dossier 3 (Duo)
+            script += `echo "Création du dossier Duo..."\n`;
+            script += `mkdir -p "${targetDir}/Duo"\n`;
+            
+            const nameCountDuo = {};
+            for (let t of duoList) {
+                let tag = formatPoseName(t.displayTag);
+                nameCountDuo[tag] = (nameCountDuo[tag] || 0) + 1;
+                const suf = nameCountDuo[tag] === 1 ? "" : `_${nameCountDuo[tag]}`;
+                
+                // Sens 1 : User1 + User2
+                let urlDuo1 = t.src.replace('%s', id1);
+                if(urlDuo1.includes('%s')) urlDuo1 = urlDuo1.replace('%s', id2);
+                urlDuo1 += `?transparent=1&palette=1&scale=${scale}`;
+                script += `wget -q -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -O "${targetDir}/Duo/${n1}__${n2}__${tag}${suf}.png" "${urlDuo1}"\n`;
+
+                // Sens 2 : User2 + User1
+                let urlDuo2 = t.src.replace('%s', id2);
+                if(urlDuo2.includes('%s')) urlDuo2 = urlDuo2.replace('%s', id1);
+                urlDuo2 += `?transparent=1&palette=1&scale=${scale}`;
+                script += `wget -q -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -O "${targetDir}/Duo/${n2}__${n1}__${tag}${suf}.png" "${urlDuo2}"\n`;
+            }
+            script += "\n";
         }
 
-        if (logErreurs !== "") zip.file("rapport_erreurs.txt", logErreurs);
+        script += `echo "--- TÉLÉCHARGEMENT TERMINÉ AVEC SUCCÈS ! ---"\n`;
 
-        const zipContent = await zip.generateAsync({ type: "uint8array" });
-        const finalName = mode === 'solo' ? n1 : 'Duo';
-
-        return new Response(zipContent, {
-            headers: {
-                'Content-Type': 'application/zip',
-                'Content-Disposition': `attachment; filename="PoseExplorer__${finalName}.zip"`
-            }
+        return new Response(script, {
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
         });
 
     } catch (error) {
-        return new Response("Erreur interne du serveur : " + error.message, { status: 500 });
+        return new Response(`echo "Erreur interne de l'API : ${error.message}"`, { status: 500 });
     }
 }
