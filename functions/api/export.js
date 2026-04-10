@@ -10,9 +10,8 @@ export async function onRequest(context) {
     const mode = url.searchParams.get('mode') || 'solo';
     const scale = url.searchParams.get('scale') || '2';
     
-    // 2. Gestion intelligente du chemin (Création de tous les sous-dossiers)
+    // 2. Gestion du chemin final
     let customDir = url.searchParams.get('dir') || 'bitmojis';
-    // Nettoyage des slashs superflus si l'utilisateur en met en trop
     customDir = customDir.replace(/^\/+|\/+$/g, '');
     const targetDir = `/config/www/${customDir}`;
 
@@ -33,10 +32,7 @@ export async function onRequest(context) {
 
         let script = `#!/bin/bash\n`;
         script += `echo "--- DÉBUT DU TÉLÉCHARGEMENT DES BITMOJIS ---"\n`;
-        
-        // SÉCURITÉ 1 : On crée l'arbre de base complet (ex: /config/www/images/avatar)
-        script += `echo "Vérification de l'arborescence : ${targetDir}"\n`;
-        script += `mkdir -p "${targetDir}"\n\n`;
+        script += `echo "IMPORTANT : Les images seront placées dans ${targetDir}"\n\n`;
 
         const formatPoseName = (str) => {
             if (!str) return "pose";
@@ -44,9 +40,7 @@ export async function onRequest(context) {
         };
 
         const generateSoloCommands = (list, id, name) => {
-            // SÉCURITÉ 2 : On crée le dossier final de l'utilisateur
-            let cmds = `echo "Création et préparation du dossier : ${targetDir}/${name}"\n`;
-            cmds += `mkdir -p "${targetDir}/${name}"\n`;
+            let cmds = `echo "Téléchargement des images de ${name}..."\n`;
             const nameCount = {};
             
             for (let t of list) {
@@ -55,7 +49,6 @@ export async function onRequest(context) {
                 const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
                 
                 let imgUrl = t.src.replace('%s', id) + `?transparent=1&palette=1&scale=${scale}`;
-                // SÉCURITÉ 3 : Wget avec le faux User-Agent pour passer le pare-feu Bitmoji
                 cmds += `wget -q -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" -O "${targetDir}/${name}/${name}__${tag}${suf}.png" "${imgUrl}"\n`;
             }
             return cmds + "\n";
@@ -67,11 +60,9 @@ export async function onRequest(context) {
             script += generateSoloCommands(soloList, id1, n1);
             script += generateSoloCommands(soloList, id2, n2);
 
-            // SÉCURITÉ 4 : Création explicite du dossier Duo
-            script += `echo "Création et préparation du dossier : ${targetDir}/Duo"\n`;
-            script += `mkdir -p "${targetDir}/Duo"\n`;
-            
+            script += `echo "Téléchargement des images Duo..."\n`;
             const nameCountDuo = {};
+            
             for (let t of duoList) {
                 let tag = formatPoseName(t.displayTag);
                 nameCountDuo[tag] = (nameCountDuo[tag] || 0) + 1;
