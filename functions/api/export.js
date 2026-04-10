@@ -19,7 +19,7 @@ export async function onRequest(context) {
 
     try {
         // 1. Récupérer tes templates depuis ton propre GitHub
-        const templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/templates_fr.json');
+        const templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/public/templates_fr.json');
         const templates = await templateReq.json();
         const list = mode === 'solo' ? templates.imoji : templates.friends;
 
