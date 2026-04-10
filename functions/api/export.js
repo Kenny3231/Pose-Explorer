@@ -22,7 +22,7 @@ export async function onRequest(context) {
         const list = mode === 'solo' ? templates.imoji : templates.friends;
 
         // 2. Traitement par petits paquets de 10 (Batching)
-        const batchSize = 10;
+        const batchSize = 15;
         
         for (let i = 0; i < list.length; i += batchSize) {
             const batch = list.slice(i, i + batchSize);
