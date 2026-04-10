@@ -1,109 +1,174 @@
 import JSZip from 'jszip';
 
+// Les mêmes fonctions de nettoyage que dans ton HTML
+function formatPoseName(str) {
+    if (!str) return "pose";
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/'/g, " ").toLowerCase().replace(/[^a-z0-9 ]/g, "_").trim();
+}
+
+function normalizeStr(str) {
+    if (!str) return "";
+    return str.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 export async function onRequest(context) {
     const { request } = context;
     const url = new URL(request.url);
     
-    // Récupération des paramètres comme dans ton HTML
+    // Récupération de tous tes paramètres
     const id1 = url.searchParams.get('id1');
-    const name1 = url.searchParams.get('name1') || 'Avatar';
     const id2 = url.searchParams.get('id2');
-    const name2 = url.searchParams.get('name2') || 'Ami';
+    const n1 = url.searchParams.get('name1') || 'Utilisateur1';
+    const n2 = url.searchParams.get('name2') || 'Utilisateur2';
     const mode = url.searchParams.get('mode') || 'solo';
     const scale = url.searchParams.get('scale') || '2';
+    const search = normalizeStr(url.searchParams.get('search') || '');
+    const categoryInput = normalizeStr(url.searchParams.get('categoryInput') || '');
 
-    if (!id1) return new Response("Erreur : l'identifiant (id1) est obligatoire.", { status: 400 });
+    if (!id1 || (mode === 'duo' && !id2)) {
+        return new Response("Erreur : Les IDs Bitmoji sont manquants.", { status: 400 });
+    }
 
     const zip = new JSZip();
 
     try {
-        // 1. Récupérer les templates (On essaie le chemin public, puis la racine)
+        // 1. Récupération des données (templates)
         let templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/public/templates_fr.json');
         if (!templateReq.ok) {
             templateReq = await fetch('https://raw.githubusercontent.com/Kenny3231/Pose-Explorer/main/templates_fr.json');
         }
         
-        const templates = await templateReq.json();
-        const list = mode === 'solo' ? templates.imoji : templates.friends;
+        const rawData = await templateReq.json();
+        const list = mode === 'solo' ? rawData.imoji : rawData.friends;
 
-        // Préparation des métadonnées comme dans ton HTML
-        const metadataUser1 = [];
-        const metadataDuo = [];
-        const tasks = [];
-
-        // 2. Préparation des URLs
-        for (let t of list) {
-            let imgUrl = t.src.replace('%s', id1);
-            if (imgUrl.includes('%s') && id2) imgUrl = imgUrl.replace('%s', id2);
-            imgUrl += `?transparent=1&palette=1&scale=${scale}`;
-
-            let safeTag = t.displayTag.replace(/[^a-zA-Z0-9]/g, "_");
-            let filename = "";
-
-            if (mode === 'solo') {
-                filename = `${name1}__${safeTag}.png`;
-                metadataUser1.push({ fichier: filename, titre: t.displayTag });
-            } else {
-                filename = `Duo__${safeTag}.png`;
-                metadataDuo.push({ fichier: filename, titre: t.displayTag });
+        // Filtre identique à ton HTML
+        const filteredList = list.filter(t => {
+            const normalizedKeywords = normalizeStr(t.keywords);
+            const matchSearch = normalizedKeywords.includes(search);
+            let matchCategory = true;
+            if (categoryInput !== '') {
+                matchCategory = t.categories && t.categories.some(c => normalizeStr(c).includes(categoryInput));
             }
+            return matchSearch && matchCategory;
+        });
 
-            tasks.push({ url: imgUrl, filename: filename, displayTag: t.displayTag });
+        // 2. ÉTAPE 1 du HTML : Préparer les tâches, les dossiers et les métadonnées
+        const tasks = [];
+        const nameCount = {};
+        const metadataUser1 = []; 
+        const metadataUser2 = []; 
+        const metadataDuo = [];
+        
+        let f1, f2;
+        if(mode === 'solo') { 
+            f1 = zip.folder(n1); 
+            f2 = zip.folder(n2); 
         }
 
+        for (let t of filteredList) {
+            let tag = formatPoseName(t.displayTag);
+            nameCount[tag] = (nameCount[tag] || 0) + 1;
+            const suf = nameCount[tag] === 1 ? "" : `_${nameCount[tag]}`;
+            
+            const imgData = { titre: t.displayTag, mots_cles: t.keywords, categories: t.categories || [] };
+            
+            if (mode === 'solo') {
+                // Pour l'utilisateur 1
+                const filename1 = `${n1}__${tag}${suf}.png`;
+                tasks.push({
+                    url: t.src.replace('%s', id1) + `?transparent=1&palette=1&scale=${scale}`,
+                    folder: f1,
+                    filename: filename1
+                });
+                metadataUser1.push({ fichier: filename1, ...imgData });
+                
+                // Pour l'utilisateur 2
+                if(id2) {
+                    const filename2 = `${n2}__${tag}${suf}.png`;
+                    tasks.push({
+                        url: t.src.replace('%s', id2) + `?transparent=1&palette=1&scale=${scale}`,
+                        folder: f2,
+                        filename: filename2
+                    });
+                    metadataUser2.push({ fichier: filename2, ...imgData });
+                }
+            } else {
+                // MODE DUO : Les deux sens !
+                // Sens 1 : n1 puis n2
+                let url1 = t.src.replace('%s', id1);
+                if(url1.includes('%s')) url1 = url1.replace('%s', id2);
+                
+                const filenameDuo1 = `${n1}__${n2}__${tag}${suf}.png`;
+                tasks.push({
+                    url: url1 + `?transparent=1&palette=1&scale=${scale}`,
+                    folder: zip,
+                    filename: filenameDuo1
+                });
+                metadataDuo.push({ fichier: filenameDuo1, ...imgData });
+
+                // Sens 2 : n2 puis n1
+                let url2 = t.src.replace('%s', id2);
+                if(url2.includes('%s')) url2 = url2.replace('%s', id1);
+                
+                const filenameDuo2 = `${n2}__${n1}__${tag}${suf}.png`;
+                tasks.push({
+                    url: url2 + `?transparent=1&palette=1&scale=${scale}`,
+                    folder: zip,
+                    filename: filenameDuo2
+                });
+                metadataDuo.push({ fichier: filenameDuo2, ...imgData });
+            }
+        }
+
+        // 3. ÉTAPE 2 du HTML : Téléchargements en parallèle (par lots de 15)
+        const BATCH_SIZE = 15;
         let logErreurs = "";
-        const batchSize = 10; // Exactement comme dans ton HTML
 
-        // 3. Téléchargement par paquets de 10
-        for (let i = 0; i < tasks.length; i += batchSize) {
-            const batch = tasks.slice(i, i + batchSize);
-
+        for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
+            const batch = tasks.slice(i, i + BATCH_SIZE);
+            
             await Promise.all(batch.map(async (task) => {
                 try {
-                    // L'ASTUCE EST ICI : On fait croire qu'on est Google Chrome !
-                    const imgRes = await fetch(task.url, {
+                    // On garde l'astuce "Google Chrome" pour ne pas se faire bloquer
+                    const response = await fetch(task.url, {
                         headers: {
                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                            "Accept": "image/webp,image/png,image/*,*/*;q=0.8",
-                            "Referer": "https://www.google.com/"
+                            "Accept": "image/webp,image/png,image/*,*/*;q=0.8"
                         }
                     });
-
-                    if (imgRes.ok) {
-                        const arrayBuffer = await imgRes.arrayBuffer();
-                        zip.file(task.filename, arrayBuffer);
+                    if (response.ok) {
+                        const arrayBuffer = await response.arrayBuffer();
+                        task.folder.file(task.filename, arrayBuffer); // Sauvegarde dans le bon sous-dossier
                     } else {
-                        logErreurs += `[Erreur ${imgRes.status}] Image refusée : ${task.filename}\n`;
+                        logErreurs += `[Erreur ${response.status}] Image refusée : ${task.filename}\n`;
                     }
                 } catch (e) {
-                    logErreurs += `[Erreur Réseau] Impossible de charger : ${task.filename}\n`;
+                    logErreurs += `[Erreur Réseau] : ${task.filename}\n`;
                 }
             }));
         }
 
-        // 4. Ajout des fichiers Metadata (Exactement comme ton HTML)
+        // 4. ÉTAPE 3 du HTML : Création finale du ZIP (avec les JSON au bon endroit)
         if (mode === 'solo') {
-            zip.file(`metadata_${name1}.json`, JSON.stringify(metadataUser1, null, 2));
+            f1.file(`metadata_${n1}.json`, JSON.stringify(metadataUser1, null, 2));
+            if(id2) f2.file(`metadata_${n2}.json`, JSON.stringify(metadataUser2, null, 2));
         } else {
             zip.file(`metadata_Duo.json`, JSON.stringify(metadataDuo, null, 2));
         }
 
-        if (logErreurs !== "") {
-            zip.file("rapport_erreurs.txt", logErreurs);
-        }
+        if (logErreurs !== "") zip.file("rapport_erreurs.txt", logErreurs);
 
-        // 5. Génération du ZIP final avec le même nom que ton HTML
         const zipContent = await zip.generateAsync({ type: "uint8array" });
-        const finalZipName = mode === 'solo' ? name1 : 'Duo';
+        const finalName = mode === 'solo' ? n1 : 'Duo';
 
         return new Response(zipContent, {
             headers: {
                 'Content-Type': 'application/zip',
-                'Content-Disposition': `attachment; filename="PoseExplorer__${finalZipName}.zip"`
+                'Content-Disposition': `attachment; filename="PoseExplorer__${finalName}.zip"`
             }
         });
 
     } catch (error) {
-        return new Response("Erreur critique du serveur : " + error.message, { status: 500 });
+        return new Response("Erreur interne du serveur : " + error.message, { status: 500 });
     }
 }
